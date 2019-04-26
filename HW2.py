@@ -61,17 +61,11 @@ def impute(X, y):
     return df_transformed
 
 
-def handle_corrupt_data(elections_df):
-    # -122707.360023781 , -108232.195771866 , 160017.623874907 on AVG_lottary_expanses
-    # -694.383176544183 on Avg_monthly_expense_when_under_age_21
-
-    # elections_errs = elections_df[(elections_df.AVG_lottary_expanses == -122707.360023781) |
-    #                               (elections_df.Avg_monthly_expense_when_under_age_21 == -694.383176544183)]
-    elections_df.loc[
-        elections_df['AVG_lottary_expanses'] < 0, ['AVG_lottary_expanses']] = np.nan
-    elections_df.loc[
-        elections_df['Avg_monthly_expense_when_under_age_21'] < 0, [
-            'Avg_monthly_expense_when_under_age_21']] = np.nan
+def handle_negative_data(df):
+    numeric_columns = df.select_dtypes([np.float64]).columns.data.obj
+    for column in numeric_columns:
+        df.loc[df[column] < 0, column] = np.nan
+    return df
 
 
 def scale(df):
@@ -95,9 +89,8 @@ def scale(df):
 
 
 def main():
-    # Data loading
     elections_df = pd.read_csv('ElectionsData.csv')
-    # df.dtypes to watch the columns types
+    elections_df = handle_negative_data(elections_df)
 
     # Split the data - 60% train, 20% validation, 20% test
     train_df, validate_df, test_df = np.split(elections_df.sample(frac=1), [int(.6 * len(elections_df)),
