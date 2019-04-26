@@ -10,7 +10,6 @@ from sequential_selection import sfs, sbs, bds
 from relief import relief
 import pickle
 
-
 # feature distribution
 normal_dist_features = ['Political_interest_Total_Score', 'Number_of_valued_Kneset_members',
                         'Number_of_differnt_parties_voted_for', 'Avg_size_per_room',
@@ -32,6 +31,7 @@ other_dist_features = ['Will_vote_only_large_party', 'Voting_Time', 'Phone_minut
 categorical_features = ['Most_Important_Issue', 'Looking_at_poles_results', 'Married', 'Gender', 'Voting_Time',
                         'Will_vote_only_large_party', 'Age_group', 'Main_transportation', 'Occupation',
                         'Financial_agenda_matters']
+
 
 def save_to_csv(name, dataset, sep=','):
     dataset.to_csv(name + ".csv", sep=sep, encoding='utf-8')
@@ -76,14 +76,14 @@ def handle_corrupt_data(elections_df):
 
 def scale(df):
     # uniform dist scale
-    uniform_features = df[list(set(uniform_dist_features)-set(categorical_features))]
+    uniform_features = df[list(set(uniform_dist_features) - set(categorical_features))]
     df[uniform_features.keys()] = (preprocessing.MinMaxScaler(feature_range=(-1, 1),
                                                               copy=False).fit_transform(uniform_features))
 
     # normal dist scale
-    normal_features = df[list(set(normal_dist_features).union(set(other_dist_features))- set(categorical_features))]
+    normal_features = df[list(set(normal_dist_features).union(set(other_dist_features)) - set(categorical_features))]
     df[normal_features.keys()] = (df[normal_features.keys()] -
-                                  df[normal_features.keys()].mean())/df[normal_features.keys()].std()
+                                  df[normal_features.keys()].mean()) / df[normal_features.keys()].std()
     # df[normal_features.keys()] = (preprocessing.MinMaxScaler(feature_range=(-1, 1),
     #                                                           copy=False).fit_transform(normal_features))
 
@@ -144,9 +144,9 @@ def main():
     pickle.dump(selected, output)
     output.close()
 
-    output = open('relief.pkl', 'rb')
-    selected = pickle.load(output)
-    output.close()
+    # output = open('relief.pkl', 'rb')
+    # selected = pickle.load(output)
+    # output.close()
 
     train_df = train_df[selected]
     validate_df = validate_df[selected]
@@ -164,9 +164,12 @@ def main():
     validate_df = validate_df[selected]
 
     output = open('sfs.pkl', 'wb')
-    # Pickle dictionary using protocol 0.
     pickle.dump(selected, output)
     output.close()
+
+    # output = open('sfs.pkl', 'wb')
+    # selected = pickle.load(output)
+    # output.close()
 
     # for name, df in [['train', train], ['validate', validate], ['test', test]]:
     #     train = identify_and_set_correct_types(df)
@@ -176,6 +179,7 @@ def main():
 
     for name, df in [['train', train_df], ['validate', validate_df], ['test', test_df]]:
         data_preperation(name=name, df=df)
+
 
 if __name__ == "__main__":
     main()
