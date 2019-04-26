@@ -68,9 +68,13 @@ class DataPreparator:
         self.test_df = self.test_df[selected]
 
     def process_data(self):
-        self.train_df, self.train_y_df = self.process_data_for_df(self.train_df)
-        self.validate_df, self.validate_y_df = self.process_data_for_df(self.validate_df)
-        self.test_df, self.test_y_df = self.process_data_for_df(self.test_df)
+        t1, t2 = self.process_data_for_df(self.train_df)
+        v1, v2 = self.process_data_for_df(self.validate_df)
+        r1, r2 = self.process_data_for_df(self.test_df)
+
+        self.train_df, self.train_y_df = t1 , t2
+        self.validate_df, self.validate_y_df = v1, v2
+        self.test_df, self.test_y_df = r1, r2
 
     def identify_and_set_correct_types(self):
         features = set(self.train_df.keys()) - {self.target}
@@ -84,20 +88,22 @@ class DataPreparator:
         return numerical, categorical
 
     def impute(self, X, y):
-        # todo: remember, when imputing test- need to impute by means or most frequent of *train*, not *test*!
-        # todo: we still need to change this!
         numerical, _ = self.identify_and_set_correct_types()
         numerical = set(numerical).intersection(set(X.keys()))
         categorical = set(X.keys()) - set(numerical)
         X_categorical = X[categorical]
         imp = SimpleImputer(missing_values=np.nan, strategy='most_frequent')
-        transformed = imp.fit_transform(X_categorical, y)
+        #  calculating imputation values with train df only
+        imp.fit(self.train_df[categorical], y)
+        transformed = imp.transform(X_categorical)
         categorical_transformed = pd.DataFrame(transformed, columns=X_categorical.columns).astype(
             X_categorical.dtypes.to_dict())
 
         X_numerical = X[numerical]
         imp = SimpleImputer(missing_values=np.nan, strategy='mean')
-        transformed = imp.fit_transform(X_numerical, y)
+        # calculating imputation values with train df only
+        imp.fit(self.train_df[numerical], y)
+        transformed = imp.transform(X_numerical)
         numerical_transformed = pd.DataFrame(transformed, columns=X_numerical.columns).astype(
             X_numerical.dtypes.to_dict())
 
@@ -135,7 +141,7 @@ class DataPreparator:
 
     def relief(self, save=False, load=False, test=False, iterates=5, threshold_type='best', threshold=30):
         if load:
-            output = open('relief.pkl', 'wb')
+            output = open('relief.pkl', 'rb')
             selected = pickle.load(output)
             output.close()
             return selected
@@ -160,7 +166,7 @@ class DataPreparator:
     def sfs(self, save=False, load=False, test=False, classifier=SVC(gamma='auto')):
 
         if load:
-            output = open('sfs.pkl', 'wb')
+            output = open('sfs.pkl', 'rb')
             selected = pickle.load(output)
             output.close()
             return selected
