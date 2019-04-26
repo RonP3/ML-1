@@ -49,7 +49,6 @@ def bds(X, y, X_test, y_test, clf):
     features = set(X.keys())
     selected = set([])
     removed = set([])
-    global_max_acc = 0
     while len(selected) != len(features) - len(removed):
         max_acc = 0
         argmax = None
@@ -60,10 +59,7 @@ def bds(X, y, X_test, y_test, clf):
             if acc > max_acc:
                 argmax = feature
         if argmax:
-            if global_max_acc < max_acc:
-                break
             selected.add(argmax)
-            global_max_acc = max_acc
 
         if len(selected) == len(features) - len(removed):
             break
@@ -76,9 +72,6 @@ def bds(X, y, X_test, y_test, clf):
             if acc > max_acc:
                 argmax = feature
         if argmax:
-            if global_max_acc < max_acc:
-                break
             removed.add(argmax)
-            global_max_acc = max_acc
 
     return selected

@@ -7,6 +7,7 @@ from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier as KNN
 from sklearn.naive_bayes import GaussianNB
 from sequential_selection import sfs, sbs, bds
+from relief import relief
 import pickle
 
 
@@ -80,15 +81,16 @@ def scale(df):
                                                               copy=False).fit_transform(uniform_features))
 
     # normal dist scale
-    normal_features = df[list(set(normal_dist_features)-set(categorical_features))]
+    normal_features = df[list(set(normal_dist_features).union(set(other_dist_features))- set(categorical_features))]
     df[normal_features.keys()] = (df[normal_features.keys()] -
                                   df[normal_features.keys()].mean())/df[normal_features.keys()].std()
-    df[normal_features.keys()] = (preprocessing.MinMaxScaler(feature_range=(-1, 1),
-                                                              copy=False).fit_transform(normal_features))
+    # df[normal_features.keys()] = (preprocessing.MinMaxScaler(feature_range=(-1, 1),
+    #                                                           copy=False).fit_transform(normal_features))
+
     # other dist scale
-    other_features = df[list(set(other_dist_features) - set(categorical_features))]
-    df[other_features.keys()] = (preprocessing.MinMaxScaler(feature_range=(-1, 1),
-                                                              copy=False).fit_transform(other_features))
+    # other_features = df[list(set(other_dist_features) - set(categorical_features))]
+    # df[other_features.keys()] = (preprocessing.MinMaxScaler(feature_range=(-1, 1),
+    #                                                           copy=False).fit_transform(other_features))
     return df
 
 
@@ -113,52 +115,67 @@ def main():
     train_df = dummify_categories(train_df)
     print("dummied")
 
-    # train_df = scale(train_df)
-    # print("scaled")
+    train_df = scale(train_df)
+    print("scaled")
 
     #  manipulate validation set
     validate_y_df = validate_df.filter(["Vote"])
     validate_df = validate_df.drop(columns=["Vote"])
 
     validate_df = impute(validate_df, validate_y_df)
-    print("imputed")
+    print("validate imputed")
 
     validate_df = dummify_categories(validate_df)
-    print("dummied")
+    print("validate dummied")
 
-    # train_df = scale(train_df)
-    # print("scaled")
+    validate_df = scale(validate_df)
+    print("validate scaled")
 
-    selected = bds(train_df, np.ravel(train_y_df), validate_df, np.ravel(validate_y_df), tree.DecisionTreeClassifier())
-    print("selected: ", selected)
+    selected = relief(train_df, train_y_df, 1, 'best', 30)
 
     for classifier in {tree.DecisionTreeClassifier, GaussianNB, SVC, KNN}:
         clf = classifier()
         clf.fit(train_df, np.ravel(train_y_df))
-        print(str(classifier), " before :", clf.score(validate_df, validate_y_df))
+        print(str(classifier), " before Relief: ", clf.score(validate_df, validate_y_df))
         clf.fit(train_df[selected], np.ravel(train_y_df))
-        print(str(classifier), " after :", len(selected), " ", clf.score(validate_df[selected], validate_y_df))
+        print(str(classifier), " after Relief:", len(selected), " ", clf.score(validate_df[selected], validate_y_df))
 
-    # relief(train_df, train_y_df)
+    output = open('relief.pkl', 'wb')
+    pickle.dump(selected, output)
+    output.close()
+
+    output = open('relief.pkl', 'rb')
+    selected = pickle.load(output)
+    output.close()
+
+    train_df = train_df[selected]
+    validate_df = validate_df[selected]
+
+    selected = bds(train_df, np.ravel(train_y_df), validate_df, np.ravel(validate_y_df), SVC(gamma='auto'))
+
+    for classifier in {tree.DecisionTreeClassifier, GaussianNB, SVC, KNN}:
+        clf = classifier()
+        clf.fit(train_df, np.ravel(train_y_df))
+        print(str(classifier), " before sfs: ", clf.score(validate_df, validate_y_df))
+        clf.fit(train_df[selected], np.ravel(train_y_df))
+        print(str(classifier), " after sfs:", len(selected), " ", clf.score(validate_df[selected], validate_y_df))
+
+    train_df = train_df[selected]
+    validate_df = validate_df[selected]
+
+    output = open('sfs.pkl', 'wb')
+    # Pickle dictionary using protocol 0.
+    pickle.dump(selected, output)
+    output.close()
 
     # for name, df in [['train', train], ['validate', validate], ['test', test]]:
     #     train = identify_and_set_correct_types(df)
     #
-    # for dataset in [['train_manipulated', train_df]]:
-    #     save_to_csv(name=dataset[0], dataset=dataset[1])
-    #
-    # for name, df in [['train', train_df], ['validate', validate_df], ['test', test_df]]:
-    #     data_preperation(name=name, df=df)
+    for dataset in [['train_manipulated', train_df]]:
+        save_to_csv(name=dataset[0], dataset=dataset[1])
 
-
-# calculates distance from input_df[x_index] to every other
-# instance in the input_df
-def calculate_distance(x_index, input_df):
-    dist = np.zeros(input_df.shape[0])
-    for i in range(input_df.shape[0]):
-        dist[i] = np.linalg.norm(input_df.iloc[x_index] - input_df.iloc[i])
-    return dist
-
+    for name, df in [['train', train_df], ['validate', validate_df], ['test', test_df]]:
+        data_preperation(name=name, df=df)
 
 if __name__ == "__main__":
     main()
