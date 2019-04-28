@@ -6,6 +6,9 @@ from sklearn import preprocessing, tree
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier as KNN
 from sklearn.naive_bayes import GaussianNB
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import mutual_info_score
+from sklearn.metrics import normalized_mutual_info_score
 from sequential_selection import sfs, sbs, bds
 from relief import relief
 import pickle
@@ -55,9 +58,16 @@ class DataPreparator:
         X = X.drop(columns=[self.target])
         X = self.handle_negative_data(X)
         X = self.impute(X, y)
-        X = self.dummify_categories(X)
         X = self.scale(X)
         return X, y
+
+    def dummify(self):
+        t1 = self.dummify_categories(self.train_df)
+        v1 = self.dummify_categories(self.validate_df)
+        r1 = self.dummify_categories(self.test_df)
+        self.train_df = t1
+        self.validate_df = v1
+        self.test_df = r1
 
     def update_selected_features(self, selected):
         selected = set(selected).intersection(set(self.train_df.keys())).intersection(
@@ -72,7 +82,7 @@ class DataPreparator:
         v1, v2 = self.process_data_for_df(self.validate_df)
         r1, r2 = self.process_data_for_df(self.test_df)
 
-        self.train_df, self.train_y_df = t1 , t2
+        self.train_df, self.train_y_df = t1, t2
         self.validate_df, self.validate_y_df = v1, v2
         self.test_df, self.test_y_df = r1, r2
 
@@ -144,9 +154,8 @@ class DataPreparator:
             output = open('relief.pkl', 'rb')
             selected = pickle.load(output)
             output.close()
-            return selected
-
-        selected = relief(self.train_df, self.train_y_df, iterates, threshold_type, threshold)
+        else:
+            selected = relief(self.train_df, self.train_y_df, iterates, threshold_type, threshold)
         if test:
             for classifier in {tree.DecisionTreeClassifier, GaussianNB, SVC, KNN}:
                 clf = classifier()
@@ -163,16 +172,15 @@ class DataPreparator:
 
         return selected
 
-    def sfs(self, save=False, load=False, test=False, classifier=SVC(gamma='auto')):
+    def __sequential(self, save=False, load=False, test=False, classifier=SVC(gamma='auto'), func=sfs):
 
         if load:
             output = open('sfs.pkl', 'rb')
             selected = pickle.load(output)
             output.close()
-            return selected
-
-        selected = sfs(self.train_df, np.ravel(self.train_y_df), self.validate_df, np.ravel(self.validate_y_df),
-                       classifier)
+        else:
+            selected = func(self.train_df, np.ravel(self.train_y_df), self.validate_df, np.ravel(self.validate_y_df),
+                            classifier)
         if test:
             for classifier in {tree.DecisionTreeClassifier, GaussianNB, SVC, KNN}:
                 clf = classifier()
@@ -189,6 +197,52 @@ class DataPreparator:
 
         return selected
 
+    def sfs(self, save=False, load=False, test=False, classifier=SVC(gamma='auto')):
+        return self.__sequential(save, load, test, classifier, sfs)
+
+    def sbs(self, save=False, load=False, test=False, classifier=SVC(gamma='auto')):
+        return self.__sequential(save, load, test, classifier, sbs)
+
+    def bds(self, save=False, load=False, test=False, classifier=SVC(gamma='auto')):
+        return self.__sequential(save, load, test, classifier, bds)
+
+    def print_evaluation(self):
+        for classifier in {tree.DecisionTreeClassifier, RandomForestClassifier, GaussianNB, SVC, KNN}:
+            clf = classifier()
+            clf.fit(self.train_df, np.ravel(self.train_y_df))
+            print(str(classifier),
+                  clf.score(self.validate_df, self.validate_y_df))
+
+    def select_by_mutual_information(self, load=False):
+        num_features = len(self.train_df.keys())
+        if load:
+            m = pd.read_csv("mutual_information.csv", sep=',', header=0, index_col=0)
+            m = m.astype(float)
+        else:
+            m = pd.DataFrame(0, index=self.train_df.keys(), columns=self.train_df.keys())
+            for i in range(num_features):
+                for j in range(num_features):
+                    m.iloc[i, j] = normalized_mutual_info_score(self.train_df.iloc[:, i], self.train_df.iloc[:, j])
+            save_to_csv("mutual_information", m)
+        mutual = set()
+        discarded = dict()
+        total_discarded = set()
+        keep = set()
+        for feature_i in self.train_df.keys():
+            discarded[feature_i] = set()
+            for feature_j in self.train_df.keys():
+                if feature_i != feature_j and feature_j not in total_discarded:
+                    if m.loc[feature_i, feature_j] >= 0.9905 and (feature_j, feature_i) not in mutual:
+                        keep.add(feature_i)
+                        discarded[feature_i].add(feature_j)
+                        total_discarded.add(feature_j)
+                        mutual.add((feature_i, feature_j))
+        for i, kept in enumerate(keep):
+            print(i, ". kept -", kept, ", discarded: ", repr(discarded[kept]))
+        print("Overall saved the ", len(keep), " following: ", repr(keep))
+        print("Overall discarded the ", len(total_discarded), " following: ", repr(total_discarded))
+        return set(self.train_df.keys()) - total_discarded
+
 
 def save_to_csv(name, dataset, sep=','):
     dataset.to_csv(name + ".csv", sep=sep, encoding='utf-8')
@@ -197,18 +251,25 @@ def save_to_csv(name, dataset, sep=','):
 def main():
     elections_df = pd.read_csv('ElectionsData.csv')
     dp = DataPreparator(elections_df, 'Vote')
+
     print("saving raw data")
     dp.save_to_file('raw')
     dp.process_data()
     print("finished processing")
+    print("selecting with mutual info")
+    select_mutual = dp.select_by_mutual_information()
+    print("finished selecting with mutual info")
+    dp.update_selected_features(select_mutual)
     print("starting relief")
-    selected = dp.relief(save=True, load=False, test=True, iterates=1000, threshold_type='best', threshold=30)
+    selected_relief = dp.relief(save=True, load=False, test=False, iterates=2000, threshold_type='best', threshold=25)
     print("finished relief")
-    dp.update_selected_features(selected)
+    dp.update_selected_features(selected_relief)
     print("starting sfs")
-    selected = dp.sfs(save=True, load=False, test=True, classifier=SVC())
+    selected_sfs = dp.sfs(save=True, load=False, test=True, classifier=KNN())
     print("finished sfs")
-    dp.update_selected_features(selected)
+    dp.update_selected_features(selected_relief.intersection(selected_sfs))
+    dp.dummify()
+    dp.print_evaluation()
     dp.save_to_file('processed')
 
 
