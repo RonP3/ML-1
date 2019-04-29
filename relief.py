@@ -53,30 +53,28 @@ def calculate_distance(x_index, input_df):
 # accepts 'value' for filtering values under threshold,
 # and 'best' for returning #threshold best features
 def relief(X_df, y_df, duration, threshold_type='value', threshold=0):
-    numeric_columns = X_df.select_dtypes([np.float64]).columns.data.obj
-    other_keys = set(X_df.keys()) - set(numeric_columns)
+    numeric_columns = list(X_df.select_dtypes([np.float64]).columns.data.obj)
+    other_keys_set = set(X_df.keys()) - set(numeric_columns)
+    other_keys = list(other_keys_set)
 
-    w = pd.DataFrame(0, index=np.arange(1), columns=X_df.keys())
-    for t in range(duration):
-        x_index = np.random.randint(0, len(X_df))
-        x = X_df.iloc[x_index]
-        dists = calculate_distance(x_index, X_df)
-        nearhit_index, nearmiss_index = nearhitmiss(x_index, dists, y_df)
-        w[list(numeric_columns)] += np.power(x[numeric_columns] - X_df[numeric_columns].iloc[nearmiss_index], 2) - \
-             np.power(x[numeric_columns] - X_df[numeric_columns].iloc[nearhit_index], 2)
-        # categorical hamming distance -
-        w[list(other_keys)] += X_df[other_keys].iloc[nearmiss_index].ne(x[other_keys]).astype(float) - X_df[other_keys].iloc[
-            nearhit_index].ne(x[other_keys]).astype(float)
+    if duration != 0:
+        w = pd.DataFrame(0, index=np.arange(1), columns=X_df.keys())
+        for t in range(duration):
+            x_index = np.random.randint(0, len(X_df))
+            x = X_df.iloc[x_index]
+            dists = calculate_distance(x_index, X_df)
+            nearhit_index, nearmiss_index = nearhitmiss(x_index, dists, y_df)
+            w[numeric_columns] += np.power(x[numeric_columns] - X_df[numeric_columns].iloc[nearmiss_index], 2) - \
+                 np.power(x[numeric_columns] - X_df[numeric_columns].iloc[nearhit_index], 2)
+            # categorical hamming distance -
+            w[other_keys] += X_df[other_keys].iloc[nearmiss_index].ne(x[other_keys]).astype(float) - X_df[other_keys].iloc[
+                nearhit_index].ne(x[other_keys]).astype(float)
 
-    # import pickle
-    # output = open('relief_w.pkl', 'rb')
-    # w_s = pickle.load(output)
-    # output.close()
-    # output = open('relief_keys.pkl', 'rb')
-    # k_s = pickle.load(output)
-    # output.close()
-    w.to_csv("w.csv", sep=',', encoding='utf-8')
+    else:
+        w = pd.read_csv("w.csv", sep=',', encoding='utf-8', header=0)
     if threshold_type == 'value':
-        return set(X_df.keys()[np.argwhere(w.iloc[0] >= threshold)])
+        num_pass = set([numeric_columns[x] for x in np.argwhere(w[numeric_columns].iloc[0] >= threshold).flatten()])
+        cat_pass = set([other_keys[x] for x in np.argwhere(w[other_keys].iloc[0] >= threshold).flatten()])
+        return num_pass.union(cat_pass)
     elif threshold_type == 'best':
-        return set(X_df.keys()[(-w.iloc[0]).argsort()[:min(threshold, len(w.iloc[0]))]])
+        return set(X_df.keys()[(-w.iloc[0]).argsort()[:min(threshold, len(w.iloc[0]))]-1])

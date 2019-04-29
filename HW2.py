@@ -53,6 +53,12 @@ class DataPreparator:
                         ['test_' + suffix, self.test_df]]:
             save_to_csv(name=dataset[0], dataset=dataset[1])
 
+    def save_to_file_with_target(self, suffix=''):
+        for dataset in [['train_' + suffix, self.train_df.join(self.train_y_df)],
+                        ['validate_' + suffix, self.validate_df.join(self.validate_y_df)],
+                        ['test_' + suffix, self.test_df.join(self.test_y_df)]]:
+            save_to_csv(name=dataset[0], dataset=dataset[1])
+
     def process_data_for_df(self, X):
         y = X.filter([self.target])
         X = X.drop(columns=[self.target])
@@ -106,7 +112,8 @@ class DataPreparator:
         #  calculating imputation values with train df only
         imp.fit(self.train_df[categorical], y)
         transformed = imp.transform(X_categorical)
-        categorical_transformed = pd.DataFrame(transformed, columns=X_categorical.columns).astype(
+        categorical_transformed = pd.DataFrame(transformed, columns=X_categorical.columns,
+                                               index=X_categorical.index).astype(
             X_categorical.dtypes.to_dict())
 
         X_numerical = X[numerical]
@@ -114,7 +121,7 @@ class DataPreparator:
         # calculating imputation values with train df only
         imp.fit(self.train_df[numerical], y)
         transformed = imp.transform(X_numerical)
-        numerical_transformed = pd.DataFrame(transformed, columns=X_numerical.columns).astype(
+        numerical_transformed = pd.DataFrame(transformed, columns=X_numerical.columns, index=X_numerical.index).astype(
             X_numerical.dtypes.to_dict())
 
         return pd.concat([categorical_transformed, numerical_transformed], axis=1)
@@ -210,7 +217,7 @@ class DataPreparator:
         for classifier in {tree.DecisionTreeClassifier, RandomForestClassifier, GaussianNB, SVC, KNN}:
             clf = classifier()
             clf.fit(self.train_df, np.ravel(self.train_y_df))
-            print(str(classifier),
+            print("Testing ", self.train_df.shape[1], " features on ", str(classifier),
                   clf.score(self.validate_df, self.validate_y_df))
 
     def select_by_mutual_information(self, load=False):
@@ -249,6 +256,7 @@ def save_to_csv(name, dataset, sep=','):
 
 
 def main():
+    select_by_mutual_info = False
     elections_df = pd.read_csv('ElectionsData.csv')
     dp = DataPreparator(elections_df, 'Vote')
 
@@ -256,21 +264,33 @@ def main():
     dp.save_to_file('raw')
     dp.process_data()
     print("finished processing")
-    print("selecting with mutual info")
-    select_mutual = dp.select_by_mutual_information()
-    print("finished selecting with mutual info")
-    dp.update_selected_features(select_mutual)
+    if select_by_mutual_info:
+        print("selecting with mutual info")
+        select_mutual = dp.select_by_mutual_information()
+        print("finished selecting with mutual info")
+        dp.update_selected_features(select_mutual)
     print("starting relief")
-    selected_relief = dp.relief(save=True, load=False, test=False, iterates=2000, threshold_type='best', threshold=25)
+    original_keys = elections_df.keys()
+    selected_relief = dp.relief(save=False, load=False, test=False, iterates=0, threshold_type='value', threshold=600)
     print("finished relief")
-    dp.update_selected_features(selected_relief)
-    print("starting sfs")
-    selected_sfs = dp.sfs(save=True, load=False, test=True, classifier=KNN())
-    print("finished sfs")
-    dp.update_selected_features(selected_relief.intersection(selected_sfs))
     dp.dummify()
+    print("starting sfs")
+    selected_sfs = dp.sfs(save=True, load=False, test=False,
+                          classifier=tree.DecisionTreeClassifier(criterion='entropy', random_state=1))
+    reverse_dummy = set()
+    regenerated_reverse = set()
+    for select in selected_sfs:
+        reverse_dummy = reverse_dummy.union(set([col for col in original_keys if select.startswith(col + '_')]))
+    for feature in dp.train_df.keys():
+        for reversed_dummy in reverse_dummy:
+            if feature.startswith(reversed_dummy + "_"):
+                regenerated_reverse.add(feature)
+
+    total_selected = regenerated_reverse.union(selected_relief.union(selected_sfs.intersection(original_keys)))
+    dp.update_selected_features(total_selected)
+    print("finished sfs")
     dp.print_evaluation()
-    dp.save_to_file('processed')
+    dp.save_to_file_with_target('processed')
 
 
 if __name__ == "__main__":

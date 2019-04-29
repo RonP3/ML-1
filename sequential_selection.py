@@ -14,8 +14,9 @@ def sfs(X, y, X_test, y_test, clf, max_features=None):
             acc = clf.score(X_test[test_features], y_test)
             if acc > max_acc:
                 argmax = feature
+                max_acc = acc
         if argmax:
-            if global_max_acc < max_acc:
+            if global_max_acc >= max_acc:
                 break
             selected.add(argmax)
             features.remove(argmax)
@@ -37,8 +38,9 @@ def sbs(X, y, X_test, y_test, clf, min_features=None):
             acc = clf.score(X_test[test_features], y_test)
             if acc > max_acc:
                 argmax = feature
+                max_acc = acc
         if argmax:
-            if global_max_acc < max_acc:
+            if global_max_acc > max_acc:
                 break
             features.remove(argmax)
             global_max_acc = max_acc
