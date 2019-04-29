@@ -52,7 +52,7 @@ def calculate_distance(x_index, input_df):
 # implementation of relief algorithm
 # accepts 'value' for filtering values under threshold,
 # and 'best' for returning #threshold best features
-def relief(X_df, y_df, duration, threshold_type='value', threshold=0):
+def relief(X_df, y_df, duration, threshold_type='value', threshold=0, threshold_disc=0):
     numeric_columns = list(X_df.select_dtypes([np.float64]).columns.data.obj)
     other_keys_set = set(X_df.keys()) - set(numeric_columns)
     other_keys = list(other_keys_set)
@@ -74,7 +74,7 @@ def relief(X_df, y_df, duration, threshold_type='value', threshold=0):
         w = pd.read_csv("w.csv", sep=',', encoding='utf-8', header=0)
     if threshold_type == 'value':
         num_pass = set([numeric_columns[x] for x in np.argwhere(w[numeric_columns].iloc[0] >= threshold).flatten()])
-        cat_pass = set([other_keys[x] for x in np.argwhere(w[other_keys].iloc[0] >= threshold).flatten()])
+        cat_pass = set([other_keys[x] for x in np.argwhere(w[other_keys].iloc[0] >= threshold_disc).flatten()])
         return num_pass.union(cat_pass)
     elif threshold_type == 'best':
         return set(X_df.keys()[(-w.iloc[0]).argsort()[:min(threshold, len(w.iloc[0]))]-1])

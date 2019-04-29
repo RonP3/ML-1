@@ -1,6 +1,7 @@
 from sklearn.model_selection import train_test_split
 import pandas as pd
 import numpy as np
+import matplotlib as plt
 from sklearn.impute import SimpleImputer
 from sklearn import preprocessing, tree
 from sklearn.svm import SVC
@@ -34,6 +35,36 @@ other_dist_features = ['Will_vote_only_large_party', 'Voting_Time', 'Phone_minut
 categorical_features = ['Most_Important_Issue', 'Looking_at_poles_results', 'Married', 'Gender', 'Voting_Time',
                         'Will_vote_only_large_party', 'Age_group', 'Main_transportation', 'Occupation',
                         'Financial_agenda_matters']
+
+
+def make_hists(self, X, y):
+    colors = ['red', 'tan', 'lime', 'orange', 'black', 'yellow', 'green', 'pink', 'red', 'brown',
+              'grey', 'purple', 'navy']
+    features = (set(self.train_df.keys()) - {'Vote'}) - set(categorical_features)
+    for feature in features:
+        df = pd.DataFrame({"x": X[feature].values,
+                           "class": y.values.flatten()})
+
+        _, edges = np.histogram(df["x"], bins=15)
+        histdata = []
+        labels = []
+        for n, group in df.groupby("class"):
+            histdata.append(np.histogram(group["x"], bins=edges)[0])
+            labels.append(n)
+
+        hist = np.array(histdata)
+        histcum = np.cumsum(hist, axis=0)
+
+        plt.bar(edges[:-1], hist[0, :], width=np.diff(edges)[0],
+                label=labels[0], align="edge")
+
+        for i in range(1, len(hist)):
+            plt.bar(edges[:-1], hist[i, :], width=np.diff(edges)[0],
+                    bottom=histcum[i - 1, :], color=colors[i], label=labels[i], align="edge")
+
+        plt.legend(title="class")
+        plt.savefig('hists_label/' + feature + '.jpeg')
+        # plt.show()
 
 
 class DataPreparator:
@@ -156,13 +187,14 @@ class DataPreparator:
             X.loc[X[column] < 0, column] = np.nan
         return X
 
-    def relief(self, save=False, load=False, test=False, iterates=5, threshold_type='best', threshold=30):
+    def relief(self, save=False, load=False, test=False, iterates=5, threshold_type='best', threshold=30,
+               threshold_disc=0):
         if load:
             output = open('relief.pkl', 'rb')
             selected = pickle.load(output)
             output.close()
         else:
-            selected = relief(self.train_df, self.train_y_df, iterates, threshold_type, threshold)
+            selected = relief(self.train_df, self.train_y_df, iterates, threshold_type, threshold, threshold_disc)
         if test:
             for classifier in {tree.DecisionTreeClassifier, GaussianNB, SVC, KNN}:
                 clf = classifier()
@@ -239,7 +271,7 @@ class DataPreparator:
             discarded[feature_i] = set()
             for feature_j in self.train_df.keys():
                 if feature_i != feature_j and feature_j not in total_discarded:
-                    if m.loc[feature_i, feature_j] >= 0.9905 and (feature_j, feature_i) not in mutual:
+                    if m.loc[feature_i, feature_j] >= 0.99 and (feature_j, feature_i) not in mutual:
                         keep.add(feature_i)
                         discarded[feature_i].add(feature_j)
                         total_discarded.add(feature_j)
@@ -271,13 +303,17 @@ def main():
         dp.update_selected_features(select_mutual)
     print("starting relief")
     original_keys = elections_df.keys()
-    selected_relief = dp.relief(save=False, load=False, test=False, iterates=0, threshold_type='value', threshold=600)
+    SAVE = False
+    selected_relief = dp.relief(save=SAVE, load=not SAVE, test=False, iterates=0, threshold_type='value', threshold=630,
+                                threshold_disc=1100)
     print("finished relief")
+
     dp.dummify()
     print("starting sfs")
-    selected_sfs = dp.sfs(save=True, load=False, test=False,
+    selected_sfs = dp.sfs(save=SAVE, load=not SAVE, test=False,
                           classifier=tree.DecisionTreeClassifier(criterion='entropy', random_state=1))
     reverse_dummy = set()
+    reverse_dummy = reverse_dummy.union(selected_relief)
     regenerated_reverse = set()
     for select in selected_sfs:
         reverse_dummy = reverse_dummy.union(set([col for col in original_keys if select.startswith(col + '_')]))
@@ -290,6 +326,8 @@ def main():
     dp.update_selected_features(total_selected)
     print("finished sfs")
     dp.print_evaluation()
+    print(selected_relief)
+    print(selected_sfs)
     dp.save_to_file_with_target('processed')
 
 
